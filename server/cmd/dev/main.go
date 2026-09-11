@@ -99,6 +99,7 @@ func main() {
 
 	// Controlled server access
 	noRegister := flag.Bool("no-register", false, "Disallow new account registrations for clients, when present. Default = false")
+	user := flag.String("user", "", "In-game player name to pin every client session to (single-account mode). Empty = normal per-uuid accounts.")
 
 	// dev utility output config
 	noColor := flag.Bool("no-color", false, "disable colored output")
@@ -158,7 +159,7 @@ func main() {
 			label: "grpc",
 			color: colorYellow,
 			cmd: exec.CommandContext(ctx, filepath.Join("bin", "lunar-tear"+ext),
-				grpcArgs(*grpcListen, *grpcPublicAddr, *grpcDB, *grpcOctoURL, *grpcAuthURL, *adminListen, *noRegister)...,
+				grpcArgs(*grpcListen, *grpcPublicAddr, *grpcDB, *grpcOctoURL, *grpcAuthURL, *adminListen, *user, *noRegister)...,
 			),
 		},
 	}
@@ -219,7 +220,7 @@ func prefixLines(wg *sync.WaitGroup, prefix string, r io.Reader) {
 // grpcArgs assembles the argv for the lunar-tear subprocess. The admin flag
 // is appended only when --admin.listen was supplied so we don't override
 // lunar-tear's own default when the operator hasn't opted in.
-func grpcArgs(listen, publicAddr, db, octoURL, authURL, adminListen string, noRegister bool) []string {
+func grpcArgs(listen, publicAddr, db, octoURL, authURL, adminListen, user string, noRegister bool) []string {
 	args := []string{
 		"--listen", listen,
 		"--public-addr", publicAddr,
@@ -230,6 +231,10 @@ func grpcArgs(listen, publicAddr, db, octoURL, authURL, adminListen string, noRe
 
 	if adminListen != "" {
 		args = append(args, "--admin-listen", adminListen)
+	}
+
+	if user != "" {
+		args = append(args, "--user", user)
 	}
 
 	if noRegister {

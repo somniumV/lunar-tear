@@ -66,6 +66,59 @@ func (s *SQLiteStore) DefaultUserId() (int64, error) {
 	return userId, nil
 }
 
+// GetUserByName looks up an account by its in-game profile name. Names are not
+// unique in the schema, so an ambiguous name is reported rather than guessed at.
+func (s *SQLiteStore) GetUserByName(name string) (int64, error) {
+	rows, err := s.db.Query(`SELECT user_id FROM user_profile WHERE name = ? ORDER BY user_id`, name)
+	if err != nil {
+		return 0, fmt.Errorf("query user_profile: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return 0, fmt.Errorf("scan user_profile: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("query user_profile: %w", err)
+	}
+
+	switch len(ids) {
+	case 0:
+		return 0, store.ErrNotFound
+	case 1:
+		return ids[0], nil
+	default:
+		return 0, fmt.Errorf("name %q is shared by %d accounts (user ids %v)", name, len(ids), ids)
+	}
+}
+
+// ListAccounts returns every account with its in-game name, including accounts
+// that have not picked a name yet (empty string).
+func (s *SQLiteStore) ListAccounts() ([]store.Account, error) {
+	rows, err := s.db.Query(`SELECT u.user_id, COALESCE(p.name, '')
+		FROM users u LEFT JOIN user_profile p ON p.user_id = u.user_id
+		ORDER BY u.user_id`)
+	if err != nil {
+		return nil, fmt.Errorf("query accounts: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []store.Account
+	for rows.Next() {
+		var a store.Account
+		if err := rows.Scan(&a.UserId, &a.Name); err != nil {
+			return nil, fmt.Errorf("scan accounts: %w", err)
+		}
+		accounts = append(accounts, a)
+	}
+	return accounts, rows.Err()
+}
+
 // ImportUser replaces all data for u.UserId in the database with the
 // contents of u.  Any pre-existing rows for that user are deleted first.
 func (s *SQLiteStore) ImportUser(u *store.UserState) error {

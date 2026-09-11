@@ -1,7 +1,7 @@
 # Lunar Tear
 
 Private server research project for a certain discontinued mobile game.
-Discord server: https://discord.gg/MZAf5aVkJG
+Discord server: <https://discord.gg/MZAf5aVkJG>
 
 ## How To Launch The Server
 
@@ -54,6 +54,7 @@ go run ./cmd/wizard --grpc-port 9003 --cdn-port 9080
 | `--cdn-port`     | `8080`  | CDN server port                                                                                                          |
 | `--auth-port`    | `3000`  | Auth server port                                                                                                         |
 | `--admin-port`   | `0`     | Admin webhook port (`0` = disabled). Bound on `127.0.0.1`; only takes effect when `LUNAR_ADMIN_TOKEN` is set in the env. |
+| `--user`         | _(empty)_ | In-game player name to pin every login to ([Single-Account Mode](#single-account-mode)). Saved to `.wizard.json`; pass `--user ""` to clear. |
 
 Custom ports are saved to `.wizard.json` alongside your other settings. On the next run the saved ports are reused automatically — no need to pass the flags again. If you later pass different port flags, the wizard warns you that the ports changed and asks for confirmation before continuing.
 
@@ -192,6 +193,7 @@ make dev ARGS="--grpc.listen 0.0.0.0:9000 --grpc.public-addr 10.0.2.2:9000"
 | `--grpc.octo-url`    | `http://10.0.2.2:8080`  | Octo CDN base URL passed to lunar-tear                                                                               |
 | `--grpc.auth-url`    | `http://localhost:3000` | auth server base URL passed to lunar-tear                                                                            |
 | `--no-register`      | `false`                 | disable new user registrations (only already registered users can connect).                                          |
+| `--user`             | _(empty)_               | in-game player name to pin every login to; passed through to lunar-tear as `--user`                                  |
 | `--admin.listen`     | _(empty)_               | lunar-tear admin webhook bind. Empty = leave default; webhook only binds when `LUNAR_ADMIN_TOKEN` is set in the env. |
 | `--no-color`         | `false`                 | disable colored output                                                                                               |
 
@@ -215,6 +217,54 @@ make dev ARGS="--grpc.listen 0.0.0.0:9000 --grpc.public-addr 10.0.2.2:9000"
 | `--auth-url`     | _(empty)_        | Auth server base URL (e.g. `http://localhost:3000`)                         |
 | `--admin-listen` | `127.0.0.1:8082` | Admin webhook listen address. Only binds when `LUNAR_ADMIN_TOKEN` is set.   |
 | `--no-register`  | `false`          | Disable new user registrations (only already registered users can connect). |
+| `--user`         | _(empty)_        | In-game player name to pin every client session to (see below). Falls back to `LUNAR_USER`. |
+
+### Single-Account Mode
+
+Normally each client is identified by a UUID it generates itself, and the server maps that UUID to its own account. Reinstall the client, switch emulators, or connect a second device and you land on a different save.
+
+Passing `--user` with an in-game player name pins the server to that one account:
+
+```bash
+go run ./cmd/lunar-tear \
+  --listen 0.0.0.0:8003 \
+  --public-addr 10.0.2.2:8003 \
+  --octo-url http://10.0.2.2:8080 \
+  --user "PlayerName"
+```
+
+Every client that connects resolves to that account, regardless of the UUID it sends, how many accounts exist in the database, or how many old sessions are stored. Specifically:
+
+- login by UUID, by session key (including unknown, stale, and expired keys), and by linked Facebook id all return the pinned account;
+- a fresh client's registration call returns the pinned account **without creating a new one**, so repeated reinstalls no longer litter the database with throwaway saves;
+- no auth server is required — the name is looked up in the game database's own `user_profile` table.
+
+The name must match exactly (it is case-sensitive). If it doesn't, the server refuses to start and prints the accounts it does know about:
+
+```
+--user "Alcie": no account with that in-game name.
+Known accounts:
+  user_id=1  Alice
+  user_id=2  Bob
+```
+
+So the account has to exist first: start the server once without `--user`, create and name the character in-game, then restart with `--user "<that name>"`. The same flag is available on the wizard and the dev runner, which pass it straight through.
+
+For deployments configured purely through the environment, `LUNAR_USER` does the same thing:
+
+```bash
+LUNAR_USER="PlayerName" docker compose up -d
+```
+
+The compose file forwards `LUNAR_USER` to the game server (set it in your shell or in `.env`), and the server reads it directly — there is no entrypoint flag to pass. An explicit `--user` wins over `LUNAR_USER`; leaving both unset restores normal per-UUID behavior. Startup errors name whichever one you set:
+
+```
+LUNAR_USER="Alcie": no account with that in-game name.
+```
+
+Under Compose that failure is fatal on every start, and `restart: unless-stopped` will keep retrying — `docker compose logs server` shows the message and the known accounts.
+
+This is a read/route-time override, not a migration — nothing in the database is renamed, merged, or deleted. Dropping the flag restores normal per-UUID behavior, and the other accounts are still there. `claim-account` remains the tool for actually merging a throwaway account into an existing one.
 
 ### Live Master Data Reload
 
@@ -273,8 +323,9 @@ The game server is configured via environment variables in the compose file:
 | `LUNAR_AUTH_URL`     | Auth server base URL (optional)                                                       |
 | `LUNAR_ADMIN_LISTEN` | Admin webhook bind address inside the container (compose default: `0.0.0.0:8082`)     |
 | `LUNAR_ADMIN_TOKEN`  | Bearer token for the admin webhook. **The webhook does not bind unless this is set.** |
+| `LUNAR_USER`         | In-game player name to pin every login to ([Single-Account Mode](#single-account-mode)). Empty = normal per-UUID accounts. |
 
-Auth is optional — if `LUNAR_AUTH_URL` is unset the game server starts without it. The admin webhook is published to `127.0.0.1:8082` on the host so the master-data reload endpoint stays loopback-only by default; set `LUNAR_ADMIN_TOKEN` (e.g. via a `.env` file) before bringing the stack up.
+Auth is optional — if `LUNAR_AUTH_URL` is unset the game server starts without it. `LUNAR_USER` is passed through from your shell or `.env` file, so `LUNAR_USER="PlayerName" docker compose up -d` runs the stack in single-account mode. The admin webhook is published to `127.0.0.1:8082` on the host so the master-data reload endpoint stays loopback-only by default; set `LUNAR_ADMIN_TOKEN` (e.g. via a `.env` file) before bringing the stack up.
 
 ### Makefile Targets
 

@@ -40,6 +40,7 @@ type config struct {
 	CDNPort   int    `json:"cdn_port,omitempty"`
 	AuthPort  int    `json:"auth_port,omitempty"`
 	AdminPort int    `json:"admin_port,omitempty"`
+	User      string `json:"user,omitempty"`
 }
 
 const (
@@ -64,6 +65,7 @@ func main() {
 	cdnPort := flag.Int("cdn-port", defaultCDNPort, "CDN server port")
 	authPort := flag.Int("auth-port", defaultAuthPort, "auth server port")
 	adminPort := flag.Int("admin-port", 0, "admin webhook port (0 = disabled). Bound on 127.0.0.1; only takes effect when LUNAR_ADMIN_TOKEN is set.")
+	user := flag.String("user", "", "In-game player name to pin every client session to (single-account mode). Pass --user \"\" to clear a saved value.")
 	flag.Parse()
 
 	flagSet := map[string]bool{}
@@ -102,10 +104,16 @@ func main() {
 		}
 	}
 
+	pinnedUser := cfg.User
+	if flagSet["user"] {
+		pinnedUser = *user
+	}
+
 	cfg.GRPCPort = p.GRPC
 	cfg.CDNPort = p.CDN
 	cfg.AuthPort = p.Auth
 	cfg.AdminPort = p.Admin
+	cfg.User = pinnedUser
 	saveConfig(cfg)
 
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Width(14)
@@ -118,6 +126,9 @@ func main() {
 	if p.Admin > 0 {
 		fmt.Printf("  %s %s\n", labelStyle.Render("Admin webhook:"), addrStyle.Render(fmt.Sprintf("127.0.0.1:%d", p.Admin)))
 	}
+	if pinnedUser != "" {
+		fmt.Printf("  %s %s\n", labelStyle.Render("Account:"), addrStyle.Render(pinnedUser))
+	}
 	fmt.Println()
 
 	if firstRun || *setupOnly {
@@ -128,7 +139,7 @@ func main() {
 		return
 	}
 
-	launchDev(ip, p)
+	launchDev(ip, p, pinnedUser)
 }
 
 type assetCheck struct {
@@ -901,7 +912,7 @@ func saveConfig(cfg config) {
 	_ = os.WriteFile(configFile, append(data, '\n'), 0644)
 }
 
-func launchDev(ip string, p ports) {
+func launchDev(ip string, p ports, pinnedUser string) {
 	ext := ""
 	if runtime.GOOS == "windows" {
 		ext = ".exe"
@@ -930,6 +941,9 @@ func launchDev(ip string, p ports) {
 	// want a different bind can run cmd/dev directly with --admin.listen.
 	if p.Admin > 0 {
 		devArgs = append(devArgs, "--admin.listen", fmt.Sprintf("127.0.0.1:%d", p.Admin))
+	}
+	if pinnedUser != "" {
+		devArgs = append(devArgs, "--user", pinnedUser)
 	}
 	cmd := exec.Command(devBin, devArgs...)
 	cmd.Stdout = os.Stdout

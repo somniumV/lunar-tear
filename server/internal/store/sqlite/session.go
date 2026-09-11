@@ -14,11 +14,15 @@ func (s *SQLiteStore) CreateSession(uuid string, ttl time.Duration) (store.Sessi
 		return store.SessionState{}, store.ErrNotFound
 	}
 
+	return s.CreateSessionForUser(userId, uuid, ttl)
+}
+
+func (s *SQLiteStore) CreateSessionForUser(userId int64, uuid string, ttl time.Duration) (store.SessionState, error) {
 	now := s.clock()
 	sessionKey := fmt.Sprintf("session_%d_%d", userId, now.UnixNano())
 	expireAt := now.Add(ttl)
 
-	_, err = s.db.Exec(
+	_, err := s.db.Exec(
 		`INSERT INTO sessions (session_key, user_id, uuid, expire_at) VALUES (?, ?, ?, ?)`,
 		sessionKey, userId, uuid, expireAt.Format(time.RFC3339Nano),
 	)

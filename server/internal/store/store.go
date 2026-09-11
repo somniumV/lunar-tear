@@ -26,5 +26,21 @@ type UserRepository interface {
 
 type SessionRepository interface {
 	CreateSession(uuid string, ttl time.Duration) (SessionState, error)
+	// CreateSessionForUser issues a session for an explicit account instead of
+	// looking one up by uuid. uuid is recorded on the session row as-is, so the
+	// connecting client stays identifiable even when it does not own the account.
+	CreateSessionForUser(userId int64, uuid string, ttl time.Duration) (SessionState, error)
 	ResolveUserId(sessionKey string) (int64, error)
+}
+
+// Repository is the combined store the gRPC services are wired with.
+type Repository interface {
+	UserRepository
+	SessionRepository
+}
+
+// Account is one player account, identified by its in-game profile name.
+type Account struct {
+	UserId int64
+	Name   string
 }

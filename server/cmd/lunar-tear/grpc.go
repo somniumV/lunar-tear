@@ -34,10 +34,7 @@ func startGRPC(
 	publicAddr string,
 	octoURL string,
 	authURL string,
-	userStore interface {
-		store.UserRepository
-		store.SessionRepository
-	},
+	userStore store.Repository,
 	holder *runtime.Holder,
 	noRegister bool,
 ) *grpc.Server {
@@ -77,10 +74,7 @@ func registerServices(
 	publicAddr string,
 	octoURL string,
 	authURL string,
-	userStore interface {
-		store.UserRepository
-		store.SessionRepository
-	},
+	userStore store.Repository,
 	holder *runtime.Holder,
 	noRegister bool,
 ) {

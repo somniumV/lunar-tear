@@ -14,6 +14,8 @@ if [ -n "${LUNAR_ADMIN_LISTEN}" ]; then
   ADMIN_FLAG="--admin-listen ${LUNAR_ADMIN_LISTEN}"
 fi
 
+# LUNAR_USER (single-account mode) needs no flag here: the server reads it
+# from the environment itself, which exec passes through.
 exec ./lunar-tear \
   --listen "${LUNAR_LISTEN:-0.0.0.0:443}" \
   --public-addr "${LUNAR_PUBLIC_ADDR}" \
